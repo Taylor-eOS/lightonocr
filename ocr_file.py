@@ -1,18 +1,22 @@
+import re
 import torch
 from transformers import LightOnOcrForConditionalGeneration, LightOnOcrProcessor
 from PIL import Image
 
+default_input_file = 'input.jpg'
 output_file = 'output.txt'
+print_limit = 1800
+ocr_instruction = "Read the text in the image in reflowable format, omitting image captions."
 
-def get_device_and_dtype():
+def get_device():
     if torch.cuda.is_available():
         return "cuda", torch.bfloat16
     if torch.backends.mps.is_available():
         return "mps", torch.float32
     return "cpu", torch.float32
 
-def load_model_and_processor():
-    device, dtype = get_device_and_dtype()
+def load_model():
+    device, dtype = get_device()
     model = LightOnOcrForConditionalGeneration.from_pretrained("lightonai/LightOnOCR-2-1B", torch_dtype=dtype, trust_remote_code=True).to(device)
     processor = LightOnOcrProcessor.from_pretrained("lightonai/LightOnOCR-2-1B", trust_remote_code=True)
     return model, processor, device, dtype
@@ -20,13 +24,13 @@ def load_model_and_processor():
 def load_image(image_path):
     return Image.open(image_path).convert("RGB")
 
-def prepare_inputs(processor, image):
+def prepare_inputs(processor, image, instruction):
     conversation = [
         {
             "role": "user",
             "content": [
                 {"type": "image"},
-                {"type": "text", "text": "Read all the text in the image."}
+                {"type": "text", "text": instruction}
             ]
         }
     ]
@@ -52,12 +56,24 @@ def generate_text(model, inputs):
 def decode_text(processor, generated_ids):
     return processor.decode(generated_ids, skip_special_tokens=True)
 
+def process_image(model, processor, device, dtype, image_path, instruction=None):
+    if instruction is None:
+        instruction = ocr_instruction
+    image = load_image(image_path)
+    inputs = prepare_inputs(processor, image, instruction)
+    inputs = move_inputs_to_device(inputs, device, dtype)
+    generated_ids = generate_text(model, inputs)
+    text = decode_text(processor, generated_ids)
+    text = re.sub(r'\n\s*\n', '\n', text)
+    text = text.strip()
+    return text
+
 def save_text(text, output_path):
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(text)
 
-def main():
-    user_input = input('Full input file: ').strip() or 'input.jpg'
+def read_file():
+    user_input = input('Full input file name: ').strip() or default_input_file
     candidates = [user_input, user_input + '.jpg', user_input + '.jpeg', user_input + '.png']
     input_file = None
     for candidate in candidates:
@@ -76,23 +92,20 @@ def main():
         print("Please check the filename and try again.")
         return
     print(f"Using input file: {input_file}")
-    print("Loading model and processor...")
-    model, processor, device, dtype = load_model_and_processor()
+    print("Loading model and processor")
+    model, processor, device, dtype = load_model()
     print(f"Using device: {device}   dtype: {dtype}")
-    print("Loading image...")
-    image = load_image(input_file)
-    print("Preparing inputs...")
-    inputs = prepare_inputs(processor, image)
-    inputs = move_inputs_to_device(inputs, device, dtype)
-    print("Running OCR...")
-    generated_ids = generate_text(model, inputs)
-    print("Decoding result...")
-    text = decode_text(processor, generated_ids)
-    print("Saving result...")
+    print("Running OCR")
+    print(ocr_instruction)
+    text = process_image(model, processor, device, dtype, input_file)
+    print("Saving result")
     save_text(text, output_file)
     print(f"Done. Result saved to {output_file}:")
-    print(text.replace('\n\n', '\n'))
+    ellipsis = ''
+    if len(text) > print_limit:
+        ellipsis = '...[truncated]'
+    print(text[:print_limit] + ellipsis)
 
 if __name__ == "__main__":
-    main()
+    read_file()
 
