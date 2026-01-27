@@ -2,7 +2,6 @@ import torch
 from transformers import LightOnOcrForConditionalGeneration, LightOnOcrProcessor
 from PIL import Image
 
-input_file = input('Full input file: ') or 'input.jpg'
 output_file = 'output.txt'
 
 def get_device_and_dtype():
@@ -58,6 +57,25 @@ def save_text(text, output_path):
         f.write(text)
 
 def main():
+    user_input = input('Full input file: ').strip() or 'input.jpg'
+    candidates = [user_input, user_input + '.jpg', user_input + '.jpeg', user_input + '.png']
+    input_file = None
+    for candidate in candidates:
+        try:
+            with open(candidate, 'rb'):
+                input_file = candidate
+                break
+        except FileNotFoundError:
+            continue
+        except Exception as e:
+            print(f"Error while checking file {candidate}: {e}")
+            return
+    if input_file is None:
+        print(f"Error: File not found.")
+        print(f"Tried: {', '.join(candidates)}")
+        print("Please check the filename and try again.")
+        return
+    print(f"Using input file: {input_file}")
     print("Loading model and processor...")
     model, processor, device, dtype = load_model_and_processor()
     print(f"Using device: {device}   dtype: {dtype}")
@@ -72,8 +90,8 @@ def main():
     text = decode_text(processor, generated_ids)
     print("Saving result...")
     save_text(text, output_file)
-    print("\nDone. Result saved to output.txt")
-    print(text)
+    print(f"Done. Result saved to {output_file}:")
+    print(text.replace('\n\n', '\n'))
 
 if __name__ == "__main__":
     main()
