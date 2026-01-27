@@ -45,7 +45,7 @@ def process_folder():
                 text = process_image(model, processor, device, dtype, image_path)
                 if idx > 1:
                     outfile.write(separator)
-                outfile.write(f"File: {filename}\n")
+                outfile.write(f"{filename}\n\n")
                 outfile.write(text)
                 outfile.flush()
                 print(f"Completed: {len(text)} characters")
@@ -54,14 +54,14 @@ def process_folder():
                 print(f"{error_msg}")
                 if idx > 1:
                     outfile.write(separator)
-                outfile.write(f"File: {filename}\n{error_msg}\n")
+                outfile.write(f"{filename}\n{error_msg}\n\n")
                 outfile.flush()
             except Exception as e:
                 error_msg = f"Error processing {filename}: {str(e)}"
                 print(f"{error_msg}")
                 if idx > 1:
                     outfile.write(separator)
-                outfile.write(f"File: {filename}\n{error_msg}\n")
+                outfile.write(f"{filename}\n{error_msg}\n\n")
                 outfile.flush()
     print(f"All results saved to {batch_output_file}")
     print(f"Processed {len(image_files)} image{'s' if len(image_files) != 1 else ''}")

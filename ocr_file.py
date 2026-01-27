@@ -2,7 +2,7 @@ import re
 import torch
 from transformers import LightOnOcrForConditionalGeneration, LightOnOcrProcessor
 from PIL import Image
-from settings import default_input_file, output_file, print_limit, ocr_instruction, image_extensions, model_name
+from settings import default_input_file, print_limit, ocr_instruction, image_extensions, model_name
 
 def get_device():
     if torch.cuda.is_available():
@@ -101,6 +101,7 @@ def read_file():
     print(ocr_instruction)
     text = process_image(model, processor, device, dtype, input_file)
     print("Saving result")
+    output_file = os.path.basename(input_file)
     save_text(text, output_file)
     print(f"Result saved to {output_file}:")
     ellipsis = ''
