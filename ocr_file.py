@@ -2,11 +2,7 @@ import re
 import torch
 from transformers import LightOnOcrForConditionalGeneration, LightOnOcrProcessor
 from PIL import Image
-
-default_input_file = 'input.jpg'
-output_file = 'output.txt'
-print_limit = 1800
-ocr_instruction = "Read the text in the image in reflowable format, omitting image captions."
+from settings import default_input_file, output_file, print_limit, ocr_instruction, image_extensions, model_name
 
 def get_device():
     if torch.cuda.is_available():
@@ -16,9 +12,10 @@ def get_device():
     return "cpu", torch.float32
 
 def load_model():
+    print("Loading model")
     device, dtype = get_device()
-    model = LightOnOcrForConditionalGeneration.from_pretrained("lightonai/LightOnOCR-2-1B", torch_dtype=dtype, trust_remote_code=True).to(device)
-    processor = LightOnOcrProcessor.from_pretrained("lightonai/LightOnOCR-2-1B", trust_remote_code=True)
+    model = LightOnOcrForConditionalGeneration.from_pretrained(model_name, torch_dtype=dtype, trust_remote_code=True).to(device)
+    processor = LightOnOcrProcessor.from_pretrained(model_name, trust_remote_code=True)
     return model, processor, device, dtype
 
 def load_image(image_path):
@@ -72,35 +69,40 @@ def save_text(text, output_path):
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(text)
 
-def read_file():
-    user_input = input('Full input file name: ').strip() or default_input_file
-    candidates = [user_input, user_input + '.jpg', user_input + '.jpeg', user_input + '.png']
-    input_file = None
+def find_file(base_name, extensions=None):
+    if extensions is None:
+        extensions = image_extensions
+    candidates = [base_name]
+    for ext in extensions:
+        candidates.append(base_name + ext)
     for candidate in candidates:
         try:
             with open(candidate, 'rb'):
-                input_file = candidate
-                break
+                return candidate
         except FileNotFoundError:
             continue
         except Exception as e:
             print(f"Error while checking file {candidate}: {e}")
-            return
+            return None
+    print(f"Error: File not found.")
+    print(f"Tried: {', '.join(candidates)}")
+    print("Please check the filename and try again.")
+    return None
+
+def read_file():
+    user_input = input('Full input file name: ').strip() or default_input_file
+    input_file = find_file(user_input)
     if input_file is None:
-        print(f"Error: File not found.")
-        print(f"Tried: {', '.join(candidates)}")
-        print("Please check the filename and try again.")
         return
     print(f"Using input file: {input_file}")
-    print("Loading model and processor")
     model, processor, device, dtype = load_model()
-    print(f"Using device: {device}   dtype: {dtype}")
+    #print(f"Using device: {device}, dtype: {dtype}")
     print("Running OCR")
     print(ocr_instruction)
     text = process_image(model, processor, device, dtype, input_file)
     print("Saving result")
     save_text(text, output_file)
-    print(f"Done. Result saved to {output_file}:")
+    print(f"Result saved to {output_file}:")
     ellipsis = ''
     if len(text) > print_limit:
         ellipsis = '...[truncated]'
