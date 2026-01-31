@@ -4,7 +4,7 @@ import fitz
 from ocr_file import load_model, process_image, save_text
 import settings
 
-def pdf_to_images(pdf_path, dpi=300):
+def pdf_to_images(pdf_path, dpi=200):
     images = []
     try:
         doc = fitz.open(pdf_path)
@@ -14,6 +14,12 @@ def pdf_to_images(pdf_path, dpi=300):
             pix = page.get_pixmap(matrix=mat, alpha=False)
             img_data = pix.tobytes("ppm")
             image = Image.frombytes("RGB", [pix.width, pix.height], img_data)
+            current_max = max(image.width, image.height)
+            if current_max > 1540:
+                scale = 1540 / current_max
+                new_width = int(image.width * scale)
+                new_height = int(image.height * scale)
+                image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
             images.append(image)
         doc.close()
         return images

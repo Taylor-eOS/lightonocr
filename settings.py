@@ -1,9 +1,9 @@
 model_name = "lightonai/LightOnOCR-2-1B"
-ocr_instruction = "Write the text as flowing paragraphs, in which you join hyphenated words at line breaks, and only preserve only actual paragraph breaks. Ignore text formatting like italics. Only output the text itself, do not comment at all."
+ocr_instruction = "Write the text as flowing paragraphs, join hyphenated words at line breaks, and only preserve actual paragraph breaks. Ignore text formatting like italics. Do not comment, only output the text itself. Do not add any notes or comments."
 default_input_file = 'input.jpg'
 default_input_folder = 'input'
+default_input_pdf = 'input.pdf'
 print_limit = 1800
 separator = '\n\n---\n'
 image_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp')
-default_input_pdf = 'input.pdf'
-pdf_dpi = 300
+pdf_dpi = 200
