@@ -1,7 +1,8 @@
 import os
 import time
 import fitz
-from PIL import Image
+import numpy as np
+from PIL import Image, ImageOps, ImageFilter, ImageEnhance
 from ocr_file import load_model, process_image, save_text
 import settings
 
@@ -82,11 +83,72 @@ def ask_for_start_page(total_pages):
         except ValueError:
             print("Number out of range. Please enter a valid number.")
 
+def preprocess_for_ocr(image):
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+    w, h = image.size
+    x0 = int(w * 0.45)
+    x1 = int(w * 0.55)
+    y_positions = [int(h * p) for p in (0.015, 0.03, 0.045)]
+    samples = []
+    step = max(1, (x1 - x0) // 10)
+    for y in y_positions:
+        yy = min(y, h - 1)
+        for x in range(x0, x1, step):
+            samples.append(image.getpixel((x, yy)))
+    if not samples:
+        bg_r, bg_g, bg_b = 255, 255, 255
+    else:
+        rs = sorted(p[0] for p in samples)
+        gs = sorted(p[1] for p in samples)
+        bs = sorted(p[2] for p in samples)
+        mid = len(rs) // 2
+        bg_r, bg_g, bg_b = rs[mid], gs[mid], bs[mid]
+    arr = np.asarray(image).astype(np.float32)
+    dr = arr[..., 0] - float(bg_r)
+    dg = arr[..., 1] - float(bg_g)
+    db = arr[..., 2] - float(bg_b)
+    dist = np.sqrt(dr * dr + dg * dg + db * db)
+    dist_threshold = 60.0
+    mask = dist > dist_threshold
+    mask3 = mask[..., None].astype(np.float32)
+    cleaned = arr * mask3 + 255.0 * (1.0 - mask3)
+    cleaned = np.clip(cleaned, 0, 255).astype(np.uint8)
+    gray = Image.fromarray(cleaned).convert("L")
+    gray = gray.filter(ImageFilter.MedianFilter(size=3))
+    gray = ImageEnhance.Contrast(gray).enhance(1.3)
+    garr = np.asarray(gray)
+    hist = np.bincount(garr.flatten(), minlength=256).astype(np.float32)
+    total = garr.size
+    sum_total = (np.arange(256) * hist).sum()
+    sumB = 0.0
+    wB = 0.0
+    max_var = 0.0
+    thresh = 128
+    for t in range(256):
+        wB += hist[t]
+        if wB == 0:
+            continue
+        wF = total - wB
+        if wF == 0:
+            break
+        sumB += t * hist[t]
+        mB = sumB / wB
+        mF = (sum_total - sumB) / wF
+        var_between = wB * wF * (mB - mF) * (mB - mF)
+        if var_between > max_var:
+            max_var = var_between
+            thresh = t
+    bw = (garr > thresh).astype(np.uint8) * 255
+    final = Image.fromarray(bw).convert("L")
+    return final
+
 def process_single_page(page_num, page, model, processor, device, dtype, outfile, is_first, separator):
     print(f"Processing page {page_num}")
     page_start = time.time()
     try:
         image = get_page_image(page, settings.pdf_dpi)
+        image = preprocess_for_ocr(image)
         temp_path = save_image(image, page_num)
         text = process_image(model, processor, device, dtype, temp_path)
         try:
