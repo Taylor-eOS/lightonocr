@@ -35,99 +35,118 @@ def get_page_image(page, dpi):
 
 def format_duration(seconds):
     seconds = max(seconds, 0.0)
-    hours = int(seconds // 3600)
-    mins = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
+    total_minutes = seconds / 60.0
+    hours = int(total_minutes // 60)
+    minutes = int(total_minutes % 60)
+    if total_minutes < 1:
+        return "1 minute"
     time_parts = []
     if hours > 0:
         time_parts.append(f"{hours} hour{'s' if hours > 1 else ''}")
-    if mins > 0 or hours > 0:
-        time_parts.append(f"{mins} minute{'s' if mins > 1 else ''}")
-    if secs > 0 or len(time_parts) == 0:
-        time_parts.append(f"{secs} second{'s' if secs > 1 else ''}")
+    if minutes > 0 or hours == 0:
+        time_parts.append(f"{minutes} minute{'s' if minutes > 1 else ''}")
     return ' '.join(time_parts)
 
-def process_pdf():
+def ask_for_pdf_path():
     user_input = input('PDF file name: ').strip() or settings.default_input_pdf
     file_path = resolve_pdf_path(user_input)
     if not file_path:
         print(f"Error: File '{user_input}' not found.")
-        return
+        return None
     print(f"Using PDF file: {file_path}")
+    return file_path
+
+def open_pdf_document(file_path):
     try:
         doc = fitz.open(file_path)
+        if len(doc) == 0:
+            print("No pages detected in file.")
+            doc.close()
+            return None
+        print(f"The PDF has {len(doc)} page{'s' if len(doc) > 1 else ''}.")
+        return doc
     except Exception as e:
         print(f"Error opening PDF: {e}")
-        return
-    total_pages = len(doc)
-    if total_pages == 0:
-        print("The PDF has no pages.")
-        doc.close()
-        return
-    print(f"The PDF has {total_pages} page{'s' if total_pages > 1 else ''}.")
-    start_input = input(f"Enter starting page number (1-{total_pages}, press Enter for 1): ").strip()
-    if not start_input:
-        start_page = 1
-    else:
+        return None
+
+def ask_for_start_page(total_pages):
+    while True:
+        start_input = input(f"Enter starting page number (1-{total_pages}), default to 1: ").strip()
+        if not start_input:
+            return 1
         try:
             proposed = int(start_input)
             if 1 <= proposed <= total_pages:
-                start_page = proposed
-            else:
-                print("Page number out of range, starting from page 1.")
-                start_page = 1
+                return proposed
+            print(f"Page number must be between 1 and {total_pages}. Try again.")
         except ValueError:
-            print("Invalid input, starting from page 1.")
-            start_page = 1
-    print(f"Processing pages {start_page} to {total_pages}")
+            print("Number out of range. Please enter a valid number.")
+
+def process_single_page(page_num, page, model, processor, device, dtype, outfile, is_first, separator):
+    print(f"Processing page {page_num}")
+    page_start = time.time()
+    try:
+        image = get_page_image(page, settings.pdf_dpi)
+        temp_path = save_image(image, page_num)
+        text = process_image(model, processor, device, dtype, temp_path)
+        try:
+            os.remove(temp_path)
+        except:
+            pass
+        if not is_first:
+            outfile.write(separator)
+        outfile.write(f"Page {page_num}\n\n")
+        outfile.write(text)
+        outfile.flush()
+        print(f"Completed {len(text)} characters")
+    except Exception as e:
+        error_msg = f"Error processing page {page_num}: {str(e)}"
+        print(error_msg)
+        if not is_first:
+            outfile.write(separator)
+        outfile.write(f"Page {page_num}\n{error_msg}\n\n")
+        outfile.flush()
+    duration = time.time() - page_start
+    return duration
+
+def run_ocr_loop(doc, start_page, model, processor, device, dtype, output_file):
+    total_pages = len(doc)
     num_to_process = total_pages - start_page + 1
+    print(f"Processing pages {start_page} to {total_pages} at {settings.pdf_dpi} DPI")
+    total_start = time.time()
+    running_sum = 0.0
+    with open(output_file, 'w', encoding='utf-8') as outfile:
+        for idx in range(num_to_process):
+            page_num = start_page + idx
+            print(f"Progress {idx + 1}/{num_to_process}")
+            duration = process_single_page(page_num, doc.load_page(page_num - 1), model, processor, device, dtype, outfile, idx == 0, settings.separator)
+            running_sum += duration
+            processed = idx + 1
+            avg = running_sum / processed
+            print(f"Page {page_num} took {duration:.0f} seconds (average {avg:.0f} per page)")
+            remaining = num_to_process - processed
+            if remaining > 0:
+                est_sec = avg * remaining
+                print(f"Estimated time for remaining {remaining} pages: {format_duration(est_sec)}")
+        total_dur = time.time() - total_start
+        print(f"Total OCR processing time: {format_duration(total_dur)}")
+    return num_to_process, total_pages
+
+def process_pdf():
+    file_path = ask_for_pdf_path()
+    if not file_path:
+        return
+    doc = open_pdf_document(file_path)
+    if not doc:
+        return
+    start_page = ask_for_start_page(len(doc))
     model, processor, device, dtype = load_model()
     pdf_base_name = os.path.splitext(file_path)[0]
     output_file = pdf_base_name + '.txt'
-    print(f"Processing pages with OCR at {settings.pdf_dpi} DPI")
-    with open(output_file, 'w', encoding='utf-8') as outfile:
-        total_start_time = time.time()
-        running_time_sum = 0.0
-        for proc_idx in range(num_to_process):
-            page_num = start_page + proc_idx
-            print(f"Processing page {page_num}/{total_pages} (progress {proc_idx + 1}/{num_to_process})")
-            page_start_time = time.time()
-            try:
-                page = doc.load_page(page_num - 1)
-                image = get_page_image(page, settings.pdf_dpi)
-                temp_path = save_image(image, page_num)
-                text = process_image(model, processor, device, dtype, temp_path)
-                try:
-                    os.remove(temp_path)
-                except:
-                    pass
-                if proc_idx > 0:
-                    outfile.write(settings.separator)
-                outfile.write(f"Page {page_num}\n\n")
-                outfile.write(text)
-                outfile.flush()
-                print(f"Completed: {len(text)} characters")
-            except Exception as e:
-                error_msg = f"Error processing page {page_num}: {str(e)}"
-                print(error_msg)
-                if proc_idx > 0:
-                    outfile.write(settings.separator)
-                outfile.write(f"Page {page_num}\n{error_msg}\n\n")
-                outfile.flush()
-            page_duration = time.time() - page_start_time
-            running_time_sum += page_duration
-            pages_processed = proc_idx + 1
-            avg_time = running_time_sum / pages_processed
-            print(f"Page {page_num} took {page_duration:.2f} seconds (average {avg_time:.2f} s/page)")
-            remaining_pages = num_to_process - pages_processed
-            if remaining_pages > 0:
-                est_remaining_seconds = avg_time * remaining_pages
-                print(f"Estimated time left for remaining {remaining_pages} page{'s' if remaining_pages > 1 else ''}: {format_duration(est_remaining_seconds)}")
-        total_duration = time.time() - total_start_time
-        print(f"Total OCR processing time: {format_duration(total_duration)}")
+    processed_count, total_pages = run_ocr_loop(doc, start_page, model, processor, device, dtype, output_file)
     doc.close()
     print(f"All results saved to {output_file}")
-    print(f"Processed {num_to_process} page{'s' if num_to_process != 1 else ''} from {start_page} to {total_pages}")
+    print(f"Processed {processed_count} page{'s' if processed_count != 1 else ''} from {start_page} to {total_pages}")
 
 if __name__ == "__main__":
     process_pdf()
