@@ -180,6 +180,10 @@ def run_ocr_loop(doc, start_page, model, processor, device, dtype, output_file):
     with open(output_file, 'w', encoding='utf-8') as outfile:
         for idx in range(num_to_process):
             page_num = start_page + idx
+            if os.path.exists("stop"):
+                print("Stop file detected")
+                os.remove("stop")
+                break
             print(f"Progress {idx + 1}/{num_to_process}")
             duration = process_single_page(page_num, doc.load_page(page_num - 1), model, processor, device, dtype, outfile, idx == 0, settings.separator)
             running_sum += duration
@@ -191,8 +195,8 @@ def run_ocr_loop(doc, start_page, model, processor, device, dtype, output_file):
                 est_sec = avg * remaining
                 print(f"Estimated time for remaining {remaining} pages: {format_duration(est_sec)}")
         total_dur = time.time() - total_start
-        print(f"Total OCR processing time: {format_duration(total_dur)}")
-    return num_to_process, total_pages
+        actual_processed = idx + 1 if 'idx' in locals() else 0
+        return actual_processed, total_pages
 
 def process_pdf():
     file_path = ask_for_pdf_path()
