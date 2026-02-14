@@ -10,6 +10,7 @@ class SimpleCleaner:
         top.pack(fill="x", pady=6, padx=8)
         tk.Button(top, text="Load file", command=self.load).pack(side="left", padx=6)
         tk.Button(top, text="Save result", command=self.save).pack(side="left", padx=6)
+        tk.Button(top, text="Next ---", command=self.next_separator).pack(side="left", padx=6)
         self.status = tk.Label(top, text="No file loaded", font=("sans", 11))
         self.status.pack(side="left", padx=25)
         text_frame = tk.Frame(self.root)
@@ -46,6 +47,27 @@ class SimpleCleaner:
         self.text.delete(start, end)
         self.text.tag_remove(tk.SEL, "1.0", tk.END)
         self.status.config(text="Selection removed")
+
+    def next_separator(self):
+        try:
+            pos = self.text.index("insert + 1c")
+        except tk.TclError:
+            pos = "1.0"
+        while True:
+            found = self.text.search("---", pos, tk.END)
+            if not found:
+                self.status.config(text="No more --- separators below current position")
+                return
+            line_start = self.text.index(f"{found} linestart")
+            line_end = self.text.index(f"{found} lineend")
+            line_text = self.text.get(line_start, line_end).strip()
+            if line_text == "---":
+                self.text.mark_set("insert", found)
+                self.text.see(found)
+                self.text.tag_remove(tk.SEL, "1.0", tk.END)
+                self.status.config(text="Jumped to next --- separator")
+                return
+            pos = self.text.index(f"{found} + 3c")
 
     def save(self):
         content = self.text.get("1.0", tk.END).rstrip("\n")
