@@ -8,17 +8,17 @@ def compile_pattern(pattern):
     return re.compile(pattern)
 
 sup_run = compile_pattern(sup_digit + r'+')
-wrapped_sup = compile_pattern(r'\$\^\{([⁰¹²³⁴⁵⁶⁷⁸⁹]+)\}\$')
-footnote_line_start = compile_pattern(r'^\s*\$\^{(?:\d+|[⁰¹²³⁴⁵⁶⁷⁸⁹]+)\}')
+wrapped_sup = compile_pattern(r'\$\^\{([⁰¹²³⁴⁵⁶⁷⁸⁹\d]+)\}\$')
+footnote_line_start = compile_pattern(r'^\s*<sup>(?:\d+)</sup>')
 
 def normalize_superscripts(text):
     def repl_wrapped(m):
-        digits = ''.join(sup_map[ch] for ch in m.group(1))
-        return f'$^{{{digits}}}$'
+        digits = ''.join(sup_map.get(ch, ch) for ch in m.group(1))
+        return f'<sup>{digits}</sup>'
     text = wrapped_sup.sub(repl_wrapped, text)
     def repl(m):
         digits = ''.join(sup_map[ch] for ch in m.group(0))
-        return f'$^{{{digits}}}$'
+        return f'<sup>{digits}</sup>'
     return sup_run.sub(repl, text)
 
 def remove_footnote_lines_from_text(text):
@@ -94,3 +94,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
