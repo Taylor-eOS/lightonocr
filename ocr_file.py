@@ -1,3 +1,4 @@
+import os
 import re
 import torch
 from transformers import LightOnOcrForConditionalGeneration, LightOnOcrProcessor
@@ -96,12 +97,11 @@ def read_file():
         return
     print(f"Using input file: {input_file}")
     model, processor, device, dtype = load_model()
-    #print(f"Using device: {device}, dtype: {dtype}")
     print("Running OCR")
     print(ocr_instruction)
     text = process_image(model, processor, device, dtype, input_file)
     print("Saving result")
-    output_file = os.path.basename(input_file)
+    output_file = os.path.splitext(os.path.basename(input_file))[0] + ".txt"
     save_text(text, output_file)
     print(f"Result saved to {output_file}:")
     ellipsis = ''
